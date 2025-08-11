@@ -1,6 +1,92 @@
 import bcrypt from 'bcryptjs'
 import prisma from '../config/database.js'
 import { generateToken } from '../middleware/auth.js'
+import passport from 'passport'
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20'
+
+// Google OAuth Strategy
+passport.use(new GoogleStrategy({
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: 'https://todo-backend-cff6.onrender.com/api/auth/google/callback',
+},
+async (accessToken, refreshToken, profile, done) => {
+  try {
+    // Check if user already exists
+    let user = await prisma.user.findUnique({
+      where: { email: profile.emails[0].value }
+    })
+
+    if (!user) {
+      // Create new user if doesn't exist
+      user = await prisma.user.create({
+        data: {
+          email: profile.emails[0].value,
+          name: profile.displayName,
+          // Google OAuth users don't need password
+          password: '', // You might want to handle this differently
+          // You can add more fields from profile if needed
+          // avatar: profile.photos[0]?.value,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      })
+    }
+
+    return done(null, user)
+  } catch (err) {
+    return done(err, null)
+  }
+}))
+
+// Serialize user for session
+passport.serializeUser((user, done) => {
+  done(null, user.id)
+})
+
+// Deserialize user from session
+passport.deserializeUser(async (id, done) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    })
+    done(null, user)
+  } catch (err) {
+    done(err, null)
+  }
+})
+
+// Google OAuth login/register handler
+export const handleGoogleAuth = async (req, res) => {
+  try {
+    // Generate JWT token for the authenticated user
+    const token = generateToken(req.user.id)
+    
+    // Return user data and token
+    res.json({
+      message: 'Google authentication successful',
+      user: req.user,
+      token
+    })
+  } catch (error) {
+    console.error('Google auth error:', error)
+    res.status(500).json({
+      message: 'Authentication failed'
+    })
+  }
+}
 
 export const register = async (req, res) => {
   try {
