@@ -12,12 +12,19 @@ passport.use(new GoogleStrategy({
 },
 async (accessToken, refreshToken, profile, done) => {
   try {
+    console.log('Google Strategy - Profile:', {
+      id: profile.id,
+      displayName: profile.displayName,
+      email: profile.emails[0]?.value
+    })
+    
     // Check if user already exists
     let user = await prisma.user.findUnique({
       where: { email: profile.emails[0].value }
     })
 
     if (!user) {
+      console.log('Creating new user for Google OAuth')
       // Create new user if doesn't exist
       user = await prisma.user.create({
         data: {
@@ -36,10 +43,14 @@ async (accessToken, refreshToken, profile, done) => {
           updatedAt: true
         }
       })
+      console.log('New user created:', user)
+    } else {
+      console.log('Existing user found:', user)
     }
 
     return done(null, user)
   } catch (err) {
+    console.error('Google Strategy error:', err)
     return done(err, null)
   }
 }))
